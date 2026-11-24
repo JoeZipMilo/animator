@@ -53,7 +53,9 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
   display: flex;
 }
 
-/* Left column: the code editor. */
+/* Left column: the code editor. In Code mode it keeps about 42% of the
+   width; in Interactive Graphing it narrows to about a third so the
+   canvas has more room. The width eases between the two. */
 .code-col {
   width: 42%;
   min-width: 320px;
@@ -62,6 +64,12 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
   display: flex;
   border-right: 1px solid #3a3a5e;
   background: #0f0f1e;
+  transition: width 0.28s ease, min-width 0.28s ease, max-width 0.28s ease;
+}
+.app.mode-interactive .code-col {
+  width: 22%;
+  min-width: 248px;
+  max-width: 340px;
 }
 
 /* The code column stays in the DOM when collapsed, so CodeMirror keeps its
@@ -95,30 +103,76 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
   min-height: 0;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 12px;
+  align-items: stretch;
+  gap: 18px;
   padding: 16px 14px;
   overflow: auto;
 }
-.tool-row {
+.tool-group {
+  width: 100%;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
+  padding: 12px 12px 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+.tool-group-draw {
+  background: rgba(30, 80, 100, 0.16);
+  border-color: #2a5568;
+}
+.tool-group-edit {
+  background: rgba(100, 78, 24, 0.14);
+  border-color: #5a4a28;
+}
+.tool-group-label {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.tool-group-draw .tool-group-label { color: #7ec8d8; }
+.tool-group-edit .tool-group-label { color: #d4b878; }
+.tool-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
 }
 .tool-btn {
-  padding: 6px 14px;
-  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  aspect-ratio: 1;
+  min-height: 88px;
+  padding: 8px 6px 7px;
+  border-radius: 10px;
   border: 1px solid #3a3a5c;
   background: #1e1e34;
   color: #cfe3ff;
   font: inherit;
-  font-size: 13px;
+  font-size: 11px;
+  line-height: 1.15;
+  text-align: center;
   cursor: pointer;
+}
+.tool-icon {
+  flex: none;
+  display: block;
+  width: 44px;
+  height: 44px;
+}
+.tool-btn-label {
+  line-height: 1.15;
+  white-space: nowrap;
 }
 .tool-btn:hover:not(:disabled) { background: #2a2a48; }
 .tool-btn:disabled {
-  opacity: 0.4;
-  color: #8fa3bf;
+  opacity: 0.42;
   cursor: not-allowed;
 }
 .tool-btn.tool-active {
@@ -127,6 +181,55 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
   color: #e8d8b0;
   font-weight: 600;
 }
+
+/* Drawing tools. Rest uses the option-A teal; hover is a step brighter. */
+.tool-btn.tool-draw {
+  background: #173040;
+  border-color: #3a6d80;
+  color: #c5eaf2;
+}
+.tool-btn.tool-draw:hover:not(:disabled) {
+  background: #1e4254;
+  border-color: #4d8ca0;
+  color: #e7f7fb;
+}
+.tool-btn.tool-draw.tool-active {
+  background: #1a5570;
+  border-color: #7ad0e6;
+  color: #f2fcff;
+  box-shadow: 0 0 0 1px rgba(122, 208, 230, 0.35);
+}
+
+/* Editing tools. Rest uses the option-A amber; hover is a step brighter. */
+.tool-btn.tool-edit {
+  background: #2a2316;
+  border-color: #6a5530;
+  color: #f0d7a0;
+}
+.tool-btn.tool-edit:hover:not(:disabled) {
+  background: #3a301c;
+  border-color: #8a7040;
+  color: #ffe9bc;
+}
+.tool-btn.tool-edit.tool-active {
+  background: #4a3a16;
+  border-color: #e0b050;
+  color: #fff0c8;
+  box-shadow: 0 0 0 1px rgba(224, 176, 80, 0.4);
+}
+
+/* Delete stays in the editing group, with a red accent; hover is a bit lighter. */
+.tool-btn.tool-delete {
+  background: #2a181c;
+  border-color: #7a3040;
+  color: #ffb4c0;
+}
+.tool-btn.tool-delete:hover:not(:disabled) {
+  background: #4a1e28;
+  border-color: #a04050;
+  color: #ffd0d6;
+}
+
 .tool-hint {
   color: #8fa3bf;
   font-size: 13px;
@@ -247,7 +350,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Slightly darker than the letterboxed world square, so the drawable
+  /* Slightly darker than the letterboxed 7:5 world box, so the drawable
      area is faintly distinguishable from the margins around it. */
   background: #06060c;
   container-type: size;
@@ -279,18 +382,19 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
   z-index: 10;
 }
 
-/* A centred square that fits the (possibly non-square) animation area. Give your
-   <canvas> this class, so that drawings aren't stretched. */
+/* A centred 7:5 rectangle (1400×1000 world) that fits the animation area.
+   Give your <canvas> this class, so that drawings aren't stretched. */
 .canvas-wrap {
-  width: min(100cqw, 100cqh);
-  height: min(100cqw, 100cqh);
+  aspect-ratio: 7 / 5;
+  width: min(100cqw, calc(100cqh * 7 / 5));
+  height: min(100cqh, calc(100cqw * 5 / 7));
   position: relative;
   flex: none;
   /* Keep the graphing area at the original pane colour. */
   background: #0a0a14;
 }
 
-/* Thin, low-contrast frame around the 1000×1000 world box. Not painted
+/* Thin, low-contrast frame around the 1400×1000 world box. Not painted
    onto the <canvas>, so it is not part of the animation or a canvas export.
    pointer-events: none keeps hit-testing and coordinates unchanged. */
 .world-boundary {
